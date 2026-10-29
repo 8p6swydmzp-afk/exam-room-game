@@ -1,0 +1,1645 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Don't Get Caught! — Exam Room</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;600;800;900&display=swap');
+
+        * {
+            user-select: none;
+            -webkit-user-select: none;
+            box-sizing: border-box;
+            touch-action: manipulation;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Nunito', sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+        }
+
+        .font-fredoka {
+            font-family: 'Fredoka One', cursive;
+        }
+
+        #canvas-container {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        /* Tension Overlay */
+        #vignette {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: 10;
+            box-shadow: inset 0 0 100px rgba(0, 0, 0, 0.4);
+            transition: box-shadow 0.2s ease;
+        }
+
+        /* Phone Screen FX */
+        #phone-fx-overlay {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: 12;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            background: radial-gradient(circle at 75% 85%, rgba(14, 165, 233, 0.15) 0%, rgba(15,23,42,0.8) 70%);
+        }
+
+        #phone-fx-overlay.active {
+            opacity: 1;
+        }
+
+        /* Sweat Droplets Overlay FX on high tension */
+        .sweat-drop {
+            position: absolute;
+            width: 12px;
+            height: 18px;
+            background: rgba(255, 255, 255, 0.4);
+            border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+            pointer-events: none;
+            animation: dropSlide 2s linear infinite;
+        }
+
+        @keyframes dropSlide {
+            0% { transform: translateY(-10px); opacity: 0; }
+            30% { opacity: 0.8; }
+            100% { transform: translateY(40px); opacity: 0; }
+        }
+
+        /* Screen Shake Class */
+        .shake-camera {
+            animation: shake 0.12s infinite;
+        }
+
+        @keyframes shake {
+            0% { transform: translate(2px, 1px) rotate(0deg); }
+            20% { transform: translate(-2px, -1px) rotate(-0.5deg); }
+            40% { transform: translate(1px, -2px) rotate(0.5deg); }
+            60% { transform: translate(-2px, 1px) rotate(0deg); }
+            80% { transform: translate(2px, 1px) rotate(0.5deg); }
+            100% { transform: translate(1px, -1px) rotate(-0.5deg); }
+        }
+
+        /* Phone Container Animation */
+        #phone-wrapper {
+            position: absolute;
+            bottom: -560px;
+            right: 8%;
+            width: 320px;
+            height: 550px;
+            z-index: 25;
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), bottom 0.3s ease;
+        }
+
+        #phone-wrapper.active {
+            bottom: 20px;
+        }
+
+        /* Exam Paper Overlay */
+        #exam-paper-modal {
+            position: absolute;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(10px);
+            z-index: 30;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s ease;
+        }
+
+        #exam-paper-modal.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        /* Crosshair / Look dot */
+        #reticle {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: rgba(255, 255, 255, 0.6);
+            border: 2px solid rgba(0, 0, 0, 0.4);
+            z-index: 15;
+            pointer-events: none;
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.05);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+        }
+
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.88);
+            backdrop-filter: blur(14px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+        }
+    </style>
+</head>
+<body class="select-none overflow-hidden">
+
+    <!-- 3D WebGL Canvas Container -->
+    <div id="canvas-container"></div>
+
+    <!-- Tension & Sight Vignette -->
+    <div id="vignette"></div>
+    <div id="phone-fx-overlay">
+        <div class="sweat-drop" style="top: 15%; left: 8%;"></div>
+        <div class="sweat-drop" style="top: 22%; right: 10%; animation-delay: 0.7s;"></div>
+    </div>
+
+    <!-- Center Reticle / Cursor dot -->
+    <div id="reticle"></div>
+
+    <!-- HUD Overlay -->
+    <div id="hud" class="hidden absolute inset-0 pointer-events-none z-20 flex flex-col justify-between p-4 md:p-6">
+        <!-- Top Bar: Timer, Status, Distractions -->
+        <div class="flex items-center justify-between w-full max-w-5xl mx-auto">
+            <!-- Timer & Desk Info -->
+            <div class="glass-panel rounded-2xl px-5 py-3 flex items-center gap-4 shadow-xl">
+                <div class="text-amber-400 text-2xl"><i class="fa-solid fa-clock"></i></div>
+                <div>
+                    <div class="text-xs uppercase tracking-wider text-slate-400 font-bold">Exam Time Left</div>
+                    <div id="hud-timer" class="text-2xl font-black font-fredoka text-white">05:00</div>
+                </div>
+                <div class="h-8 w-px bg-slate-700 mx-1"></div>
+                <div>
+                    <div class="text-xs uppercase tracking-wider text-slate-400 font-bold">Seat Row</div>
+                    <div id="hud-seat" class="text-sm font-bold text-amber-300">Middle Row</div>
+                </div>
+            </div>
+
+            <!-- Suspicion / Gaze Alert Indicator -->
+            <div id="gaze-alert" class="glass-panel rounded-2xl px-5 py-3 flex items-center gap-3 transition-all duration-300 opacity-30">
+                <div id="gaze-icon" class="text-emerald-400 text-2xl"><i class="fa-solid fa-eye"></i></div>
+                <div>
+                    <div class="text-xs uppercase tracking-wider text-slate-400 font-bold">Teacher Attention</div>
+                    <div id="gaze-status-text" class="text-sm font-black text-emerald-400">NOT LOOKING</div>
+                </div>
+            </div>
+
+            <!-- Exam Progress HUD -->
+            <div class="glass-panel rounded-2xl px-5 py-3 flex items-center gap-4 shadow-xl">
+                <div class="text-indigo-400 text-2xl"><i class="fa-solid fa-file-signature"></i></div>
+                <div>
+                    <div class="text-xs uppercase tracking-wider text-slate-400 font-bold">Answered</div>
+                    <div id="hud-progress" class="text-xl font-black font-fredoka text-white">0 / 10</div>
+                </div>
+                <button id="btn-open-exam" class="pointer-events-auto bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs px-3 py-2 rounded-xl transition shadow-lg active:scale-95">
+                    Exam Paper (E)
+                </button>
+            </div>
+        </div>
+
+        <!-- Classmate Distraction Event Banner -->
+        <div id="distraction-banner" class="self-center glass-panel bg-amber-500/20 border-amber-500/40 text-amber-200 px-6 py-2.5 rounded-full font-bold text-sm shadow-2xl flex items-center gap-3 opacity-0 transition-all transform -translate-y-5">
+            <i class="fa-solid fa-triangle-exclamation text-amber-400 animate-bounce"></i>
+            <span id="distraction-text">A classmate dropped a pencil! Teacher is looking away!</span>
+        </div>
+
+        <!-- Bottom Controls & Action Prompts -->
+        <div class="flex items-end justify-between w-full max-w-5xl mx-auto">
+            <!-- Controls Hint -->
+            <div class="glass-panel rounded-xl px-4 py-2.5 text-xs text-slate-300 flex items-center gap-3 shadow-lg">
+                <span class="bg-slate-700/80 px-2 py-1 rounded text-white font-mono font-bold">Drag Mouse</span> Look
+                <span class="bg-slate-700/80 px-2 py-1 rounded text-white font-mono font-bold">F</span> Phone
+                <span class="bg-rose-600/90 text-white px-2 py-1 rounded font-mono font-bold">SHIFT</span> Panic Tuck!
+                <span class="bg-slate-700/80 px-2 py-1 rounded text-white font-mono font-bold">E</span> Exam Paper
+                <span class="bg-slate-700/80 px-2 py-1 rounded text-white font-mono font-bold">ESC</span> Pause
+            </div>
+
+            <!-- Action Buttons for Mobile / Click -->
+            <div class="pointer-events-auto flex items-center gap-3">
+                <button id="btn-panic-tuck" class="bg-rose-600 hover:bg-rose-500 text-white border border-rose-400/30 px-4 py-3 rounded-2xl font-black flex items-center gap-2 shadow-2xl transition active:scale-95 text-xs">
+                    <i class="fa-solid fa-person-running text-sm"></i>
+                    <span>PANIC TUCK (Shift)</span>
+                </button>
+                <button id="btn-toggle-phone" class="bg-slate-800 hover:bg-slate-700 text-amber-400 border border-amber-500/30 px-5 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-2xl transition active:scale-95">
+                    <i class="fa-solid fa-mobile-screen-button text-lg"></i>
+                    <span>Phone (F)</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Phone GUI Overlay -->
+    <div id="phone-wrapper" class="pointer-events-auto shadow-2xl">
+        <div class="w-full h-full bg-slate-900 rounded-[40px] p-3 border-4 border-slate-700 shadow-2xl flex flex-col relative overflow-hidden">
+            <!-- Camera Notch -->
+            <div class="absolute top-4 left-1/2 -translate-x-1/2 w-28 h-5 bg-black rounded-full z-40 flex items-center justify-end px-3">
+                <div class="w-2 h-2 rounded-full bg-blue-900/60"></div>
+            </div>
+
+            <!-- Screen Container -->
+            <div class="w-full h-full bg-slate-900 rounded-[30px] flex flex-col overflow-hidden text-slate-100 relative pt-7">
+                <!-- Status Bar -->
+                <div class="px-5 py-1 flex justify-between items-center text-[10px] font-bold text-slate-400 bg-slate-950/80">
+                    <span id="phone-clock">09:41</span>
+                    <div class="flex items-center gap-1.5">
+                        <i class="fa-solid fa-wifi"></i>
+                        <i class="fa-solid fa-signal"></i>
+                        <span id="phone-battery" class="text-emerald-400 font-bold">100% <i class="fa-solid fa-battery-full"></i></span>
+                    </div>
+                </div>
+
+                <!-- Phone Apps Area -->
+                <div class="flex-1 flex flex-col relative overflow-hidden bg-slate-900">
+                    
+                    <!-- App 1: Goggle Search -->
+                    <div id="app-search" class="phone-app flex-1 flex flex-col p-3 bg-slate-900 text-white">
+                        <div class="text-center font-bold font-fredoka text-lg text-amber-400 my-1 flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-magnifying-glass"></i> Goggle Cheat
+                        </div>
+                        
+                        <div class="flex flex-col gap-1.5 mb-2">
+                            <div class="flex gap-1">
+                                <input type="text" id="phone-search-input" placeholder="Search or paste question..." class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400">
+                                <button id="btn-phone-search" class="bg-amber-500 hover:bg-amber-600 text-slate-950 px-3 py-1.5 rounded-lg font-bold text-xs flex items-center justify-center">
+                                    <i class="fa-solid fa-arrow-right"></i>
+                                </button>
+                            </div>
+                            <button id="btn-paste-search" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold py-1 rounded-md transition flex items-center justify-center gap-1">
+                                <i class="fa-solid fa-paste"></i> Paste Copied Question
+                            </button>
+                        </div>
+
+                        <!-- Search Results / Answers box -->
+                        <div id="search-results" class="flex-1 bg-slate-950 rounded-lg p-2.5 overflow-y-auto text-xs text-slate-300 space-y-2 border border-slate-800">
+                            <div class="text-slate-500 text-[11px] italic text-center mt-4">Copy a question from your exam paper or click a tag below to look up answers!</div>
+                        </div>
+
+                        <!-- Quick Search Chips -->
+                        <div class="mt-2 flex flex-wrap gap-1">
+                            <button class="quick-search-btn bg-slate-800 hover:bg-slate-700 text-[10px] px-2 py-1 rounded-md text-amber-300">Math</button>
+                            <button class="quick-search-btn bg-slate-800 hover:bg-slate-700 text-[10px] px-2 py-1 rounded-md text-emerald-300">Science</button>
+                            <button class="quick-search-btn bg-slate-800 hover:bg-slate-700 text-[10px] px-2 py-1 rounded-md text-blue-300">History</button>
+                            <button class="quick-search-btn bg-slate-800 hover:bg-slate-700 text-[10px] px-2 py-1 rounded-md text-purple-300">Geography</button>
+                        </div>
+                    </div>
+
+                    <!-- App 2: Notes / Cheatsheet -->
+                    <div id="app-notes" class="phone-app hidden flex-1 flex flex-col p-3 bg-amber-50 text-slate-800">
+                        <div class="font-bold text-sm text-amber-900 border-b border-amber-200 pb-1 mb-2 flex justify-between items-center">
+                            <span><i class="fa-solid fa-sticky-note text-amber-600"></i> My Cheatsheet</span>
+                            <span class="text-[9px] text-amber-700">Saved Notes</span>
+                        </div>
+                        <div class="flex-1 overflow-y-auto text-[11px] space-y-2 font-mono">
+                            <div class="p-2 bg-amber-100/80 rounded border border-amber-200">
+                                <strong>Math:</strong> Derivative of x² = 2x. Value of Pi ≈ 3.14159.
+                            </div>
+                            <div class="p-2 bg-amber-100/80 rounded border border-amber-200">
+                                <strong>Science:</strong> Photosynthesis converts Light to Glucose. Mitochondria = Powerhouse!
+                            </div>
+                            <div class="p-2 bg-amber-100/80 rounded border border-amber-200">
+                                <strong>History:</strong> WWII ended in 1945. First moon landing was 1969.
+                            </div>
+                            <div class="p-2 bg-amber-100/80 rounded border border-amber-200">
+                                <strong>Geography:</strong> Capital of Japan is Tokyo. Nile is the longest river.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- App 3: Calculator -->
+                    <div id="app-calc" class="phone-app hidden flex-1 flex flex-col p-3 bg-slate-950 text-white">
+                        <div id="calc-display" class="bg-slate-900 border border-slate-800 rounded-lg p-2 text-right text-xl font-mono text-emerald-400 mb-2 truncate">0</div>
+                        <div class="grid grid-cols-4 gap-1.5 flex-1">
+                            <button class="calc-btn bg-slate-800 text-slate-300 rounded text-xs font-bold py-2">7</button>
+                            <button class="calc-btn bg-slate-800 text-slate-300 rounded text-xs font-bold py-2">8</button>
+                            <button class="calc-btn bg-slate-800 text-slate-300 rounded text-xs font-bold py-2">9</button>
+                            <button class="calc-btn bg-amber-600 text-white rounded text-xs font-bold py-2">÷</button>
+                            <button class="calc-btn bg-slate-800 text-slate-300 rounded text-xs font-bold py-2">4</button>
+                            <button class="calc-btn bg-slate-800 text-slate-300 rounded text-xs font-bold py-2">5</button>
+                            <button class="calc-btn bg-slate-800 text-slate-300 rounded text-xs font-bold py-2">6</button>
+                            <button class="calc-btn bg-amber-600 text-white rounded text-xs font-bold py-2">×</button>
+                            <button class="calc-btn bg-slate-800 text-slate-300 rounded text-xs font-bold py-2">1</button>
+                            <button class="calc-btn bg-slate-800 text-slate-300 rounded text-xs font-bold py-2">2</button>
+                            <button class="calc-btn bg-slate-800 text-slate-300 rounded text-xs font-bold py-2">3</button>
+                            <button class="calc-btn bg-amber-600 text-white rounded text-xs font-bold py-2">-</button>
+                            <button class="calc-btn bg-rose-600 text-white rounded text-xs font-bold py-2">C</button>
+                            <button class="calc-btn bg-slate-800 text-slate-300 rounded text-xs font-bold py-2">0</button>
+                            <button class="calc-btn bg-emerald-600 text-white rounded text-xs font-bold py-2">=</button>
+                            <button class="calc-btn bg-amber-600 text-white rounded text-xs font-bold py-2">+</button>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- App Dock Bar -->
+                <div class="bg-slate-950 py-2 px-6 flex justify-around items-center border-t border-slate-800">
+                    <button id="dock-search" class="dock-tab text-amber-400 hover:scale-110 transition"><i class="fa-solid fa-magnifying-glass text-lg"></i></button>
+                    <button id="dock-notes" class="dock-tab text-slate-500 hover:scale-110 transition"><i class="fa-solid fa-note-sticky text-lg"></i></button>
+                    <button id="dock-calc" class="dock-tab text-slate-500 hover:scale-110 transition"><i class="fa-solid fa-calculator text-lg"></i></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Exam Paper Modal (Toggled with 'E' or button) -->
+    <div id="exam-paper-modal">
+        <div class="glass-panel w-full max-w-2xl max-h-[85vh] rounded-3xl p-6 md:p-8 flex flex-col border border-slate-700 shadow-2xl relative overflow-hidden bg-slate-900/95">
+            <button id="btn-close-exam" class="absolute top-5 right-5 text-slate-400 hover:text-white text-2xl transition">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+
+            <div class="border-b border-slate-700 pb-4 mb-4 flex justify-between items-end">
+                <div>
+                    <h2 class="text-2xl font-black font-fredoka text-amber-400 tracking-wide">FINAL EXAM PAPER</h2>
+                    <p class="text-xs text-slate-400">Click "Copy Question to Phone" to automatically search the answer!</p>
+                </div>
+                <div class="text-right">
+                    <span class="text-xs font-bold text-slate-400 uppercase">Subject</span>
+                    <div class="text-sm font-extrabold text-indigo-400">General Knowledge</div>
+                </div>
+            </div>
+
+            <!-- Exam Questions List -->
+            <div id="exam-questions-container" class="flex-1 overflow-y-auto space-y-6 pr-2">
+                <!-- Injected via JavaScript -->
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="mt-4 pt-4 border-t border-slate-800 flex justify-between items-center">
+                <div class="text-xs text-slate-400">
+                    Press <kbd class="bg-slate-800 px-2 py-0.5 rounded text-white font-mono">E</kbd> or click X to return to desk.
+                </div>
+                <button id="btn-submit-exam" class="bg-emerald-600 hover:bg-emerald-500 text-white font-black px-6 py-2.5 rounded-xl transition shadow-lg active:scale-95 flex items-center gap-2">
+                    <i class="fa-solid fa-check"></i> Turn In Exam Early
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Title & Mode Selection Screen -->
+    <div id="screen-title" class="absolute inset-0 z-50 bg-slate-950 flex items-center justify-center p-4">
+        <div class="max-w-xl w-full glass-panel rounded-3xl p-8 text-center border border-slate-800 shadow-2xl relative overflow-hidden">
+            <div class="inline-block bg-amber-500/20 text-amber-400 px-4 py-1 rounded-full text-xs font-extrabold uppercase tracking-widest mb-3 border border-amber-500/30">
+                3D First-Person Stealth
+            </div>
+
+            <h1 class="text-4xl md:text-5xl font-black font-fredoka text-white mb-2 tracking-tight">
+                DON'T GET CAUGHT!
+            </h1>
+            <p class="text-amber-400 font-bold text-lg mb-6">Exam Room Edition</p>
+
+            <p class="text-slate-300 text-xs md:text-sm mb-6 leading-relaxed">
+                You are sitting in a strict final exam! Look around, secretly pull out your phone (<kbd class="bg-slate-800 px-1.5 py-0.5 rounded text-amber-300 font-mono">F</kbd>), copy questions from your test (<kbd class="bg-slate-800 px-1.5 py-0.5 rounded text-amber-300 font-mono">E</kbd>), and search for answers. But watch out—if the teacher catches you holding your phone, it's game over!
+            </p>
+
+            <!-- Mode Selection -->
+            <div class="mb-6 text-left space-y-2">
+                <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Select Difficulty / Mode:</label>
+                <div class="grid grid-cols-2 gap-2">
+                    <button data-mode="normal" class="mode-btn bg-amber-500/20 border-2 border-amber-500 text-white rounded-xl p-3 text-left transition hover:bg-amber-500/30">
+                        <div class="font-black text-sm text-amber-400">Normal Exam</div>
+                        <div class="text-[10px] text-slate-300">Middle row desk, standard teacher speed, 5 min.</div>
+                    </button>
+                    <button data-mode="impossible" class="mode-btn bg-slate-800/80 border-2 border-transparent text-slate-400 rounded-xl p-3 text-left transition hover:bg-slate-800">
+                        <div class="font-black text-sm text-slate-200">Impossible Exam</div>
+                        <div class="text-[10px] text-slate-400">Strict teacher, quick scans, 3 min.</div>
+                    </button>
+                    <button data-mode="survival" class="mode-btn bg-slate-800/80 border-2 border-transparent text-slate-400 rounded-xl p-3 text-left transition hover:bg-slate-800">
+                        <div class="font-black text-sm text-slate-200">Survival Mode</div>
+                        <div class="text-[10px] text-slate-400">Endless test, teacher accelerates over time!</div>
+                    </button>
+                    <button data-mode="challenge" class="mode-btn bg-slate-800/80 border-2 border-transparent text-slate-400 rounded-xl p-3 text-left transition hover:bg-slate-800">
+                        <div class="font-black text-sm text-slate-200">Challenge Mode</div>
+                        <div class="text-[10px] text-slate-400">Front Row seat, 15% phone battery!</div>
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex items-center justify-between gap-3">
+                <button id="btn-audio-toggle" class="bg-slate-800 hover:bg-slate-700 text-slate-300 p-3 rounded-xl transition">
+                    <i class="fa-solid fa-volume-high text-lg"></i>
+                </button>
+                <button id="btn-start-game" class="flex-1 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-lg py-3 rounded-xl shadow-xl transition transform active:scale-95 flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-play"></i> START EXAM
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pause Menu Overlay -->
+    <div id="screen-pause" class="hidden absolute inset-0 z-40 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+        <div class="max-w-md w-full glass-panel rounded-3xl p-6 text-center border border-slate-700 shadow-2xl">
+            <h2 class="text-3xl font-black font-fredoka text-white mb-2">PAUSED</h2>
+            <p class="text-xs text-slate-400 mb-6">The classroom is frozen in time.</p>
+
+            <div class="space-y-3 mb-6">
+                <button id="btn-resume" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl transition">Resume Exam</button>
+                <button id="btn-restart-pause" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-3 rounded-xl transition">Restart Exam</button>
+                <button id="btn-main-menu" class="w-full bg-slate-800 hover:bg-slate-700 text-rose-400 font-bold py-3 rounded-xl transition">Main Menu</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Results Screen -->
+    <div id="screen-results" class="hidden absolute inset-0 z-50 bg-slate-950/90 backdrop-blur-lg flex items-center justify-center p-4">
+        <div class="max-w-lg w-full glass-panel rounded-3xl p-8 text-center border border-slate-700 shadow-2xl relative overflow-hidden">
+            <div id="results-icon-container" class="w-20 h-20 rounded-full mx-auto mb-4 flex items-center justify-center text-4xl shadow-xl">
+                <i id="results-icon" class="fa-solid fa-graduation-cap"></i>
+            </div>
+
+            <h2 id="results-title" class="text-3xl font-black font-fredoka text-white mb-1">EXAM COMPLETED!</h2>
+            <p id="results-subtitle" class="text-sm font-bold text-amber-400 mb-6">You handed in your test on time!</p>
+
+            <!-- Teacher Remark -->
+            <div class="bg-slate-900/80 rounded-2xl p-4 border border-slate-800 mb-6 text-left">
+                <div class="text-[10px] uppercase font-bold text-slate-500 mb-1 flex items-center gap-1.5">
+                    <i class="fa-solid fa-user-tie text-amber-400"></i> Teacher's Remarks:
+                </div>
+                <p id="teacher-quote" class="text-xs md:text-sm italic text-slate-200 font-serif">
+                    "Hmm... impressive answers. I didn't see you looking around once!"
+                </p>
+            </div>
+
+            <!-- Stats Grid -->
+            <div class="grid grid-cols-3 gap-3 mb-6">
+                <div class="bg-slate-800/60 rounded-xl p-3 border border-slate-700/50">
+                    <div class="text-[10px] uppercase text-slate-400 font-bold">Score</div>
+                    <div id="stat-score" class="text-xl font-black text-amber-400 font-fredoka">90%</div>
+                </div>
+                <div class="bg-slate-800/60 rounded-xl p-3 border border-slate-700/50">
+                    <div class="text-[10px] uppercase text-slate-400 font-bold">Answers</div>
+                    <div id="stat-answers" class="text-xl font-black text-indigo-400 font-fredoka">9 / 10</div>
+                </div>
+                <div class="bg-slate-800/60 rounded-xl p-3 border border-slate-700/50">
+                    <div class="text-[10px] uppercase text-slate-400 font-bold">Time Left</div>
+                    <div id="stat-time" class="text-xl font-black text-emerald-400 font-fredoka">01:42</div>
+                </div>
+            </div>
+
+            <button id="btn-restart-results" class="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-lg py-3 rounded-xl shadow-xl transition transform active:scale-95 flex items-center justify-center gap-2">
+                <i class="fa-solid fa-rotate-right"></i> Try Again
+            </button>
+        </div>
+    </div>
+
+    <!-- MAIN GAME LOGIC -->
+    <script>
+        // --- QUESTION BANK ---
+        const EXAM_QUESTIONS = [
+            {
+                id: 1,
+                category: "Math",
+                keywords: ["math", "derivative", "x^2", "x2"],
+                question: "What is the derivative of f(x) = x² with respect to x?",
+                options: ["x", "2x", "x²", "2"],
+                answer: 1,
+                phoneHint: "Math Rule: Derivative of x^n is n*x^(n-1). For x², power rule gives 2x."
+            },
+            {
+                id: 2,
+                category: "Science",
+                keywords: ["science", "cell", "powerhouse", "mitochondria"],
+                question: "Which organelle is known as the 'powerhouse of the cell'?",
+                options: ["Nucleus", "Ribosome", "Mitochondria", "Golgi Apparatus"],
+                answer: 2,
+                phoneHint: "Biology Note: Mitochondria produce ATP energy and are called the powerhouse of the cell."
+            },
+            {
+                id: 3,
+                category: "History",
+                keywords: ["history", "wwii", "world war", "1945"],
+                question: "In what year did World War II officially end?",
+                options: ["1939", "1942", "1945", "1950"],
+                answer: 2,
+                phoneHint: "History Fact: WWII concluded in September 1945 following Allied victory."
+            },
+            {
+                id: 4,
+                category: "Geography",
+                keywords: ["geography", "japan", "capital", "tokyo"],
+                question: "What is the capital city of Japan?",
+                options: ["Kyoto", "Osaka", "Tokyo", "Hiroshima"],
+                answer: 2,
+                phoneHint: "Goggle Search: Tokyo became the official capital of Japan in 1868."
+            },
+            {
+                id: 5,
+                category: "Science",
+                keywords: ["science", "gold", "element", "au"],
+                question: "What is the chemical symbol for Gold on the periodic table?",
+                options: ["Go", "Gd", "Au", "Ag"],
+                answer: 2,
+                phoneHint: "Chemistry: Gold symbol is Au (Latin 'Aurum')."
+            },
+            {
+                id: 6,
+                category: "Math",
+                keywords: ["math", "pi", "value", "3.14"],
+                question: "What is the value of Pi (π) rounded to 2 decimal places?",
+                options: ["3.14", "3.16", "2.71", "1.41"],
+                answer: 0,
+                phoneHint: "Math Constant: Pi (π) ≈ 3.14159..."
+            },
+            {
+                id: 7,
+                category: "Science",
+                keywords: ["science", "atmosphere", "nitrogen", "gas"],
+                question: "Which gas makes up the largest percentage of Earth's atmosphere?",
+                options: ["Oxygen", "Carbon Dioxide", "Nitrogen", "Argon"],
+                answer: 2,
+                phoneHint: "Atmosphere Data: Nitrogen accounts for roughly 78% of Earth's air."
+            },
+            {
+                id: 8,
+                category: "History",
+                keywords: ["history", "moon", "1969", "armstrong"],
+                question: "Who was the first human to walk on the Moon in 1969?",
+                options: ["Buzz Aldrin", "Neil Armstrong", "Yuri Gagarin", "Michael Collins"],
+                answer: 1,
+                phoneHint: "Apollo 11: Neil Armstrong took 'one small step for man' on July 20, 1969."
+            },
+            {
+                id: 9,
+                category: "Geography",
+                keywords: ["geography", "river", "nile", "longest"],
+                question: "Which river is traditionally considered the longest in the world?",
+                options: ["Amazon River", "Nile River", "Mississippi River", "Yangtze River"],
+                answer: 1,
+                phoneHint: "Geo Fact: The Nile River in Africa is the longest (~6,650 km)."
+            },
+            {
+                id: 10,
+                category: "Science",
+                keywords: ["science", "mars", "red planet"],
+                question: "Which planet in our solar system is nicknamed the 'Red Planet'?",
+                options: ["Venus", "Mars", "Jupiter", "Saturn"],
+                answer: 1,
+                phoneHint: "Astronomy: Mars appears red due to iron oxide on its surface."
+            }
+        ];
+
+        // --- SOUND ENGINE ---
+        class SoundEngine {
+            constructor() {
+                this.ctx = null;
+                this.muted = false;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioCtx();
+                }
+            }
+
+            playClockTick() {
+                if (this.muted || !this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(1200, this.ctx.currentTime);
+                gain.gain.setValueAtTime(0.015, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + 0.03);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.04);
+            }
+
+            playFootstep() {
+                if (this.muted || !this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(90 + Math.random() * 25, this.ctx.currentTime);
+                gain.gain.setValueAtTime(0.12, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.14);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.15);
+            }
+
+            playPhoneSlide() {
+                if (this.muted || !this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(250, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(850, this.ctx.currentTime + 0.12);
+                gain.gain.setValueAtTime(0.06, this.ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.001, this.ctx.currentTime + 0.12);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.13);
+            }
+
+            playPanicSlam() {
+                if (this.muted || !this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(180, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(40, this.ctx.currentTime + 0.18);
+                gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.18);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.19);
+            }
+
+            playAlertChord() {
+                if (this.muted || !this.ctx) return;
+                [320, 420, 580].forEach(f => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(f, this.ctx.currentTime);
+                    gain.gain.setValueAtTime(0.08, this.ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.5);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + 0.52);
+                });
+            }
+
+            playClang() {
+                if (this.muted || !this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(750, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(120, this.ctx.currentTime + 0.3);
+                gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.3);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.31);
+            }
+
+            playThumpingHeartbeat(intensity = 0.5) {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                [0, 0.12].forEach(offset => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(65, now + offset);
+                    osc.frequency.exponentialRampToValueAtTime(30, now + offset + 0.1);
+                    gain.gain.setValueAtTime(0.22 * intensity, now + offset);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.11);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now + offset);
+                    osc.stop(now + offset + 0.12);
+                });
+            }
+        }
+
+        const audio = new SoundEngine();
+
+        // --- GAME STATE ---
+        const gameState = {
+            active: false,
+            paused: false,
+            mode: 'normal',
+            timer: 300,
+            maxTimer: 300,
+            suspicion: 0,
+            phoneOpen: false,
+            examOpen: false,
+            userAnswers: {},
+            distractionActive: false,
+            distractionTimer: 0,
+            battery: 100,
+            seatRow: 'middle',
+            cameraYaw: 0,
+            cameraPitch: 0,
+            copiedQuestion: ""
+        };
+
+        // --- THREE.JS GRAPHICS SCENE SETUP ---
+        let scene, camera, renderer;
+        let teacherGroup, teacherHead, teacherLeftEye, teacherRightEye, teacherSightBeam;
+        let phonePointLight, wallClockHand;
+        let studentMeshes = [];
+        let isDraggingMouse = false;
+        let previousMouseX = 0, previousMouseY = 0;
+
+        // Teacher AI State
+        const teacherAI = {
+            state: 'IDLE',
+            position: new THREE.Vector3(0, 0, -8),
+            targetPosition: new THREE.Vector3(0, 0, -8),
+            rotationY: 0,
+            stateTimer: 3,
+            moveSpeed: 2.4,
+            isLookingAtPlayer: false,
+            suspicionMult: 1.0
+        };
+
+        function init3DScene() {
+            const container = document.getElementById('canvas-container');
+            container.innerHTML = '';
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0f172a);
+            scene.fog = new THREE.FogExp2(0x0f172a, 0.025);
+
+            camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 100);
+            
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            // Ambient & Sun Lighting
+            const ambientLight = new THREE.AmbientLight(0xf8fafc, 0.55);
+            scene.add(ambientLight);
+
+            const sunLight = new THREE.DirectionalLight(0xfffbeb, 0.85);
+            sunLight.position.set(12, 18, 8);
+            sunLight.castShadow = true;
+            scene.add(sunLight);
+
+            // Ceiling Lights
+            const ceilingLight1 = new THREE.PointLight(0xe0f2fe, 0.6, 16);
+            ceilingLight1.position.set(-3, 7.8, -2);
+            scene.add(ceilingLight1);
+
+            const ceilingLight2 = new THREE.PointLight(0xe0f2fe, 0.6, 16);
+            ceilingLight2.position.set(3, 7.8, 3);
+            scene.add(ceilingLight2);
+
+            // Dynamic Phone Light
+            phonePointLight = new THREE.PointLight(0x38bdf8, 0, 3);
+            phonePointLight.position.set(0, 1.6, 0.3);
+            scene.add(phonePointLight);
+
+            buildClassroom();
+            buildTeacherModel();
+            buildClassmates();
+            buildDustParticles();
+
+            window.addEventListener('resize', onWindowResize, false);
+        }
+
+        function buildClassroom() {
+            // Floor
+            const floorGeo = new THREE.PlaneGeometry(26, 26);
+            const floorMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.25, metalness: 0.2 });
+            const floor = new THREE.Mesh(floorGeo, floorMat);
+            floor.rotation.x = -Math.PI / 2;
+            floor.receiveShadow = true;
+            scene.add(floor);
+
+            // Back Wall & Blackboard
+            const wallMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.7 });
+            const backWallGeo = new THREE.PlaneGeometry(26, 10);
+            const backWall = new THREE.Mesh(backWallGeo, wallMat);
+            backWall.position.set(0, 5, -12);
+            scene.add(backWall);
+
+            const boardGeo = new THREE.PlaneGeometry(13, 4.2);
+            const boardMat = new THREE.MeshStandardMaterial({ color: 0x064e3b, roughness: 0.3 });
+            const board = new THREE.Mesh(boardGeo, boardMat);
+            board.position.set(0, 5.2, -11.9);
+            scene.add(board);
+
+            // Chalkboard Texture
+            const boardCanvas = document.createElement('canvas');
+            boardCanvas.width = 1024;
+            boardCanvas.height = 256;
+            const bctx = boardCanvas.getContext('2d');
+            bctx.fillStyle = '#064e3b';
+            bctx.fillRect(0, 0, 1024, 256);
+            bctx.fillStyle = '#fef08a';
+            bctx.font = 'bold 42px sans-serif';
+            bctx.fillText('FINAL EXAM - NO PHONES ALLOWED!', 100, 80);
+            bctx.font = '28px sans-serif';
+            bctx.fillStyle = '#ffffff';
+            bctx.fillText('f(x) = x²  →  f\'(x) = 2x   |   Photosynthesis: CO₂ + H₂O → C₆H₁₂O₆', 60, 160);
+            const boardTex = new THREE.CanvasTexture(boardCanvas);
+            board.material.map = boardTex;
+
+            // Wall Clock
+            const clockGeo = new THREE.CylinderGeometry(0.85, 0.85, 0.1, 32);
+            const clockMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc });
+            const clock = new THREE.Mesh(clockGeo, clockMat);
+            clock.rotation.x = Math.PI / 2;
+            clock.position.set(7.5, 7.2, -11.85);
+            scene.add(clock);
+
+            const handGeo = new THREE.BoxGeometry(0.05, 0.65, 0.02);
+            const handMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+            wallClockHand = new THREE.Mesh(handGeo, handMat);
+            wallClockHand.position.set(7.5, 7.2, -11.75);
+            scene.add(wallClockHand);
+
+            // Side Walls
+            const leftWall = new THREE.Mesh(backWallGeo, wallMat);
+            leftWall.position.set(-13, 5, 0);
+            leftWall.rotation.y = Math.PI / 2;
+            scene.add(leftWall);
+
+            // Student Desks Matrix (3x3)
+            for (let r = 0; r < 3; r++) {
+                for (let c = 0; c < 3; c++) {
+                    const x = (c - 1) * 4.6;
+                    const z = -4 + r * 4.6;
+                    buildDeskAndChair(x, z);
+                }
+            }
+
+            // Teacher Front Desk
+            const tDeskGeo = new THREE.BoxGeometry(5.5, 1.4, 2.2);
+            const tDeskMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.4 });
+            const tDesk = new THREE.Mesh(tDeskGeo, tDeskMat);
+            tDesk.position.set(0, 0.7, -9.5);
+            tDesk.castShadow = true;
+            scene.add(tDesk);
+        }
+
+        function buildDeskAndChair(x, z) {
+            const deskGroup = new THREE.Group();
+            deskGroup.position.set(x, 0, z);
+
+            const topGeo = new THREE.BoxGeometry(2.3, 0.12, 1.5);
+            const topMat = new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.35 });
+            const top = new THREE.Mesh(topGeo, topMat);
+            top.position.y = 1.2;
+            top.castShadow = true;
+            deskGroup.add(top);
+
+            const legGeo = new THREE.CylinderGeometry(0.04, 0.04, 1.2);
+            const legMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.8 });
+            [[-1.0, -0.6], [1.0, -0.6], [-1.0, 0.6], [1.0, 0.6]].forEach(pos => {
+                const leg = new THREE.Mesh(legGeo, legMat);
+                leg.position.set(pos[0], 0.6, pos[1]);
+                deskGroup.add(leg);
+            });
+
+            const chairGeo = new THREE.BoxGeometry(1.2, 0.1, 1.2);
+            const chairMat = new THREE.MeshStandardMaterial({ color: 0x1e293b });
+            const chair = new THREE.Mesh(chairGeo, chairMat);
+            chair.position.set(0, 0.7, 0.85);
+            deskGroup.add(chair);
+
+            const paperGeo = new THREE.PlaneGeometry(0.65, 0.85);
+            const paperMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const paper = new THREE.Mesh(paperGeo, paperMat);
+            paper.rotation.x = -Math.PI / 2;
+            paper.position.set(0.3, 1.27, 0.1);
+            deskGroup.add(paper);
+
+            scene.add(deskGroup);
+        }
+
+        function buildTeacherModel() {
+            teacherGroup = new THREE.Group();
+
+            const torsoGeo = new THREE.CylinderGeometry(0.42, 0.36, 1.85, 16);
+            const torsoMat = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, roughness: 0.4 });
+            const torso = new THREE.Mesh(torsoGeo, torsoMat);
+            torso.position.y = 1.8;
+            torso.castShadow = true;
+            teacherGroup.add(torso);
+
+            const headGeo = new THREE.SphereGeometry(0.32, 16, 16);
+            const headMat = new THREE.MeshStandardMaterial({ color: 0xfcd34d, roughness: 0.6 });
+            teacherHead = new THREE.Mesh(headGeo, headMat);
+            teacherHead.position.set(0, 2.95, 0);
+            teacherGroup.add(teacherHead);
+
+            const eyeGeo = new THREE.SphereGeometry(0.06, 8, 8);
+            const eyeMat = new THREE.MeshBasicMaterial({ color: 0x0f172a });
+            teacherLeftEye = new THREE.Mesh(eyeGeo, eyeMat);
+            teacherLeftEye.position.set(-0.1, 3.0, 0.28);
+            teacherRightEye = new THREE.Mesh(eyeGeo, eyeMat);
+            teacherRightEye.position.set(0.1, 3.0, 0.28);
+            teacherGroup.add(teacherLeftEye);
+            teacherGroup.add(teacherRightEye);
+
+            const glassGeo = new THREE.BoxGeometry(0.42, 0.14, 0.05);
+            const glassMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+            const glasses = new THREE.Mesh(glassGeo, glassMat);
+            glasses.position.set(0, 3.0, 0.29);
+            teacherGroup.add(glasses);
+
+            // Red Sight Cone Frustum Effect
+            const beamGeo = new THREE.ConeGeometry(3.5, 12, 16, 1, true);
+            const beamMat = new THREE.MeshBasicMaterial({ color: 0xef4444, transparent: true, opacity: 0, wireframe: true });
+            teacherSightBeam = new THREE.Mesh(beamGeo, beamMat);
+            teacherSightBeam.rotation.x = -Math.PI / 2;
+            teacherSightBeam.position.set(0, 2.8, 6);
+            teacherGroup.add(teacherSightBeam);
+
+            teacherGroup.position.copy(teacherAI.position);
+            scene.add(teacherGroup);
+        }
+
+        function buildClassmates() {
+            studentMeshes = [];
+            const studentCoords = [
+                { x: -4.6, z: -4 }, { x: 0, z: -4 }, { x: 4.6, z: -4 },
+                { x: -4.6, z: 0.6 }, { x: 4.6, z: 0.6 },
+                { x: -4.6, z: 5.2 }, { x: 0, z: 5.2 }, { x: 4.6, z: 5.2 }
+            ];
+
+            const colors = [0xd97706, 0x059669, 0x2563eb, 0x7c3aed, 0xdb2777, 0xe11d48, 0x0284c7, 0x16a34a];
+
+            studentCoords.forEach((coord, idx) => {
+                const sGroup = new THREE.Group();
+                sGroup.position.set(coord.x, 0, coord.z + 0.85);
+
+                const bodyGeo = new THREE.CylinderGeometry(0.36, 0.3, 1.25, 16);
+                const bodyMat = new THREE.MeshStandardMaterial({ color: colors[idx % colors.length] });
+                const body = new THREE.Mesh(bodyGeo, bodyMat);
+                body.position.y = 0.92;
+                sGroup.add(body);
+
+                const headGeo = new THREE.SphereGeometry(0.26, 16, 16);
+                const headMat = new THREE.MeshStandardMaterial({ color: 0xfde047 });
+                const head = new THREE.Mesh(headGeo, headMat);
+                head.position.y = 1.75;
+                sGroup.add(head);
+
+                const armGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.8);
+                const armMat = new THREE.MeshStandardMaterial({ color: colors[idx % colors.length] });
+                const arm = new THREE.Mesh(armGeo, armMat);
+                arm.position.set(0.42, 1.05, 0);
+                arm.rotation.z = -Math.PI / 6;
+                sGroup.add(arm);
+
+                scene.add(sGroup);
+                studentMeshes.push({ group: sGroup, head: head, arm: arm, baseArmRot: -Math.PI / 6, animOffset: Math.random() * 10 });
+            });
+        }
+
+        function buildDustParticles() {
+            const count = 100;
+            const geo = new THREE.BufferGeometry();
+            const positions = new Float32Array(count * 3);
+
+            for (let i = 0; i < count * 3; i += 3) {
+                positions[i] = (Math.random() - 0.5) * 20;
+                positions[i + 1] = Math.random() * 8;
+                positions[i + 2] = (Math.random() - 0.5) * 20;
+            }
+
+            geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            const mat = new THREE.PointsMaterial({ color: 0xfef08a, size: 0.05, transparent: true, opacity: 0.3 });
+            scene.add(new THREE.Points(geo, mat));
+        }
+
+        function setPlayerSeat(row) {
+            gameState.seatRow = row;
+            let targetZ = 0.6; // Middle
+            if (row === 'front') targetZ = -4;
+            if (row === 'back') targetZ = 5.2;
+
+            camera.position.set(0, 1.85, targetZ + 0.85);
+            document.getElementById('hud-seat').innerText = row === 'front' ? 'Front Row' : (row === 'back' ? 'Back Row' : 'Middle Row');
+        }
+
+        function updateCameraRotation() {
+            camera.rotation.set(0, 0, 0);
+            camera.rotation.y = gameState.cameraYaw;
+            camera.rotation.x = gameState.cameraPitch;
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // --- INPUT & EVENT LISTENERS ---
+        function setupInputListeners() {
+            window.addEventListener('mousedown', (e) => {
+                if (e.target.closest('#hud') || e.target.closest('#phone-wrapper') || e.target.closest('#exam-paper-modal') || e.target.closest('.glass-panel')) return;
+                isDraggingMouse = true;
+                previousMouseX = e.clientX;
+                previousMouseY = e.clientY;
+            });
+
+            window.addEventListener('mouseup', () => { isDraggingMouse = false; });
+
+            window.addEventListener('mousemove', (e) => {
+                if (!isDraggingMouse || !gameState.active || gameState.paused) return;
+
+                const deltaX = e.clientX - previousMouseX;
+                const deltaY = e.clientY - previousMouseY;
+
+                previousMouseX = e.clientX;
+                previousMouseY = e.clientY;
+
+                gameState.cameraYaw -= deltaX * 0.003;
+                gameState.cameraPitch -= deltaY * 0.003;
+
+                gameState.cameraYaw = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, gameState.cameraYaw));
+                gameState.cameraPitch = Math.max(-Math.PI / 4, Math.min(Math.PI / 4, gameState.cameraPitch));
+
+                updateCameraRotation();
+            });
+
+            // Keyboard Listeners - MUTED WHILE TYPING INTO INPUT FIELDS!
+            window.addEventListener('keydown', (e) => {
+                if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) {
+                    return; // Prevent triggering shortcuts while user is typing search query!
+                }
+
+                if (!gameState.active) return;
+
+                if (e.key === 'Shift') {
+                    panicTuckPhone();
+                } else if (e.key === 'f' || e.key === 'F') {
+                    togglePhone();
+                } else if (e.key === 'e' || e.key === 'E') {
+                    toggleExamPaper();
+                } else if (e.key === 'Escape') {
+                    togglePauseGame();
+                }
+            });
+
+            // Action Buttons
+            document.getElementById('btn-panic-tuck').addEventListener('click', panicTuckPhone);
+            document.getElementById('btn-toggle-phone').addEventListener('click', togglePhone);
+            document.getElementById('btn-open-exam').addEventListener('click', toggleExamPaper);
+            document.getElementById('btn-close-exam').addEventListener('click', toggleExamPaper);
+            document.getElementById('btn-submit-exam').addEventListener('click', submitExamEarly);
+
+            // Phone Navigation
+            document.getElementById('dock-search').addEventListener('click', () => switchPhoneApp('search'));
+            document.getElementById('dock-notes').addEventListener('click', () => switchPhoneApp('notes'));
+            document.getElementById('dock-calc').addEventListener('click', () => switchPhoneApp('calc'));
+
+            document.getElementById('btn-phone-search').addEventListener('click', executePhoneSearch);
+            document.getElementById('btn-paste-search').addEventListener('click', () => {
+                if (gameState.copiedQuestion) {
+                    document.getElementById('phone-search-input').value = gameState.copiedQuestion;
+                    executePhoneSearch();
+                }
+            });
+            document.getElementById('phone-search-input').addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') executePhoneSearch();
+            });
+
+            document.querySelectorAll('.quick-search-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.getElementById('phone-search-input').value = btn.innerText;
+                    executePhoneSearch();
+                });
+            });
+
+            document.querySelectorAll('.calc-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const val = btn.innerText;
+                    const display = document.getElementById('calc-display');
+                    if (val === 'C') display.innerText = '0';
+                    else if (val === '=') {
+                        try { display.innerText = eval(display.innerText.replace(/×/g, '*').replace(/÷/g, '/')); }
+                        catch { display.innerText = 'Error'; }
+                    } else {
+                        if (display.innerText === '0' || display.innerText === 'Error') display.innerText = val;
+                        else display.innerText += val;
+                    }
+                });
+            });
+
+            document.querySelectorAll('.mode-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.mode-btn').forEach(b => {
+                        b.classList.remove('bg-amber-500/20', 'border-amber-500');
+                        b.classList.add('bg-slate-800/80', 'border-transparent');
+                    });
+                    btn.classList.add('bg-amber-500/20', 'border-amber-500');
+                    btn.classList.remove('bg-slate-800/80', 'border-transparent');
+                    gameState.mode = btn.dataset.mode;
+                });
+            });
+
+            document.getElementById('btn-audio-toggle').addEventListener('click', () => {
+                audio.muted = !audio.muted;
+                const icon = document.getElementById('btn-audio-toggle').querySelector('i');
+                icon.className = audio.muted ? 'fa-solid fa-volume-xmark text-lg text-rose-400' : 'fa-solid fa-volume-high text-lg text-slate-300';
+            });
+
+            document.getElementById('btn-start-game').addEventListener('click', startGame);
+            document.getElementById('btn-resume').addEventListener('click', togglePauseGame);
+            document.getElementById('btn-restart-pause').addEventListener('click', startGame);
+            document.getElementById('btn-restart-results').addEventListener('click', startGame);
+            document.getElementById('btn-main-menu').addEventListener('click', showMainMenu);
+        }
+
+        function panicTuckPhone() {
+            if (!gameState.phoneOpen) return;
+            audio.playPanicSlam();
+            gameState.phoneOpen = false;
+            document.getElementById('phone-wrapper').classList.remove('active');
+            document.getElementById('phone-fx-overlay').classList.remove('active');
+            document.body.classList.remove('shake-camera');
+            if (phonePointLight) phonePointLight.intensity = 0;
+            gameState.suspicion = Math.min(100, gameState.suspicion + 6);
+        }
+
+        function togglePhone() {
+            audio.init();
+            if (gameState.examOpen) return;
+            gameState.phoneOpen = !gameState.phoneOpen;
+            const phoneEl = document.getElementById('phone-wrapper');
+            const fxEl = document.getElementById('phone-fx-overlay');
+
+            if (gameState.phoneOpen) {
+                phoneEl.classList.add('active');
+                fxEl.classList.add('active');
+                audio.playPhoneSlide();
+                if (phonePointLight) phonePointLight.intensity = 1.2;
+            } else {
+                phoneEl.classList.remove('active');
+                fxEl.classList.remove('active');
+                document.body.classList.remove('shake-camera');
+                if (phonePointLight) phonePointLight.intensity = 0;
+            }
+        }
+
+        function toggleExamPaper() {
+            audio.init();
+            if (gameState.phoneOpen) panicTuckPhone();
+            gameState.examOpen = !gameState.examOpen;
+            const modal = document.getElementById('exam-paper-modal');
+            if (gameState.examOpen) {
+                renderExamQuestions();
+                modal.classList.add('active');
+            } else {
+                modal.classList.remove('active');
+            }
+        }
+
+        function renderExamQuestions() {
+            const container = document.getElementById('exam-questions-container');
+            container.innerHTML = '';
+
+            EXAM_QUESTIONS.forEach((q, idx) => {
+                const card = document.createElement('div');
+                card.className = 'bg-slate-800/80 rounded-2xl p-4 border border-slate-700 space-y-3';
+
+                const answeredIdx = gameState.userAnswers[q.id];
+
+                let optionsHTML = '';
+                q.options.forEach((opt, optIdx) => {
+                    const isSelected = answeredIdx === optIdx;
+                    optionsHTML += `
+                        <button onclick="selectAnswer(${q.id}, ${optIdx})" class="w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${isSelected ? 'bg-amber-500 text-slate-950 font-black' : 'bg-slate-900/90 text-slate-300 hover:bg-slate-700'}">
+                            <span class="w-5 h-5 rounded-full border border-current flex items-center justify-center text-[10px]">${String.fromCharCode(65 + optIdx)}</span>
+                            <span>${opt}</span>
+                        </button>
+                    `;
+                });
+
+                card.innerHTML = `
+                    <div class="flex items-start justify-between gap-2">
+                        <div class="text-xs font-bold text-amber-400">Q${idx + 1}. [${q.category}]</div>
+                        <button onclick="copyQuestionToPhone(${q.id})" class="bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold px-2.5 py-1 rounded-lg transition flex items-center gap-1 shadow">
+                            <i class="fa-solid fa-copy"></i> Copy to Phone
+                        </button>
+                    </div>
+                    <p class="text-xs md:text-sm text-slate-100 font-bold">${q.question}</p>
+                    <div class="grid grid-cols-2 gap-2">${optionsHTML}</div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        window.selectAnswer = function(qId, optIdx) {
+            gameState.userAnswers[qId] = optIdx;
+            renderExamQuestions();
+            updateHUD();
+        };
+
+        window.copyQuestionToPhone = function(qId) {
+            const q = EXAM_QUESTIONS.find(item => item.id === qId);
+            if (!q) return;
+
+            gameState.copiedQuestion = q.question;
+
+            // Auto switch to phone search app and fill
+            if (gameState.examOpen) toggleExamPaper();
+            if (!gameState.phoneOpen) togglePhone();
+
+            switchPhoneApp('search');
+            document.getElementById('phone-search-input').value = q.question;
+            executePhoneSearch();
+        };
+
+        function switchPhoneApp(appName) {
+            document.querySelectorAll('.phone-app').forEach(app => app.classList.add('hidden'));
+            document.getElementById(`app-${appName}`).classList.remove('hidden');
+
+            document.querySelectorAll('.dock-tab').forEach(t => t.className = 'dock-tab text-slate-500 hover:scale-110 transition');
+            document.getElementById(`dock-${appName}`).className = 'dock-tab text-amber-400 hover:scale-110 transition';
+        }
+
+        function executePhoneSearch() {
+            const query = document.getElementById('phone-search-input').value.toLowerCase().trim();
+            const resultsBox = document.getElementById('search-results');
+
+            if (!query) return;
+
+            resultsBox.innerHTML = '<div class="text-amber-400 text-center font-bold my-2"><i class="fa-solid fa-spinner animate-spin"></i> Searching Goggle...</div>';
+
+            setTimeout(() => {
+                let matches = EXAM_QUESTIONS.filter(q => 
+                    q.question.toLowerCase().includes(query) || 
+                    q.category.toLowerCase().includes(query) ||
+                    q.keywords.some(k => query.includes(k))
+                );
+
+                if (matches.length > 0) {
+                    resultsBox.innerHTML = '';
+                    matches.forEach(m => {
+                        resultsBox.innerHTML += `
+                            <div class="p-2 bg-slate-900 rounded border border-amber-500/30 text-[11px]">
+                                <div class="font-bold text-amber-300 mb-1"><i class="fa-solid fa-check text-emerald-400"></i> ${m.question}</div>
+                                <div class="text-slate-200">${m.phoneHint}</div>
+                                <div class="text-[9px] text-emerald-400 font-mono mt-1">Answer: ${m.options[m.answer]}</div>
+                            </div>
+                        `;
+                    });
+                } else {
+                    resultsBox.innerHTML = `
+                        <div class="text-rose-400 text-center text-[11px] mt-3">No direct answers found for "${query}". Try searching category names like "Math" or "Science"!</div>
+                    `;
+                }
+            }, 300);
+        }
+
+        // --- GAME AI & SUSPICION UPDATES ---
+        function updateSuspicionSystem(delta) {
+            if (!gameState.active || gameState.paused) return;
+
+            let suspicionGain = 0;
+
+            if (gameState.phoneOpen) {
+                if (teacherAI.isLookingAtPlayer && !gameState.distractionActive) {
+                    suspicionGain += 50 * delta * teacherAI.suspicionMult;
+                    document.body.classList.add('shake-camera');
+                } else {
+                    suspicionGain += 5 * delta;
+                    document.body.classList.remove('shake-camera');
+                }
+                gameState.battery = Math.max(0, gameState.battery - 0.8 * delta);
+            } else {
+                document.body.classList.remove('shake-camera');
+            }
+
+            if (Math.abs(gameState.cameraYaw) > 0.5 && teacherAI.isLookingAtPlayer) {
+                suspicionGain += 16 * delta;
+            }
+
+            if (gameState.distractionActive) {
+                suspicionGain = 0;
+            }
+
+            if (suspicionGain > 0) {
+                gameState.suspicion = Math.min(100, gameState.suspicion + suspicionGain);
+                if (Math.random() < 0.12) {
+                    audio.playThumpingHeartbeat(gameState.suspicion / 100);
+                }
+            } else {
+                gameState.suspicion = Math.max(0, gameState.suspicion - 14 * delta);
+            }
+
+            if (teacherSightBeam) {
+                const sightOpacity = (gameState.suspicion > 20 || teacherAI.isLookingAtPlayer) ? Math.min(0.35, gameState.suspicion / 200) : 0;
+                teacherSightBeam.material.opacity = sightOpacity;
+            }
+
+            const vignette = document.getElementById('vignette');
+            const intensity = gameState.suspicion / 100;
+            vignette.style.boxShadow = `inset 0 0 ${100 + intensity * 160}px rgba(${Math.round(intensity * 230)}, 0, 0, ${0.4 + intensity * 0.55})`;
+
+            if (gameState.suspicion >= 100) {
+                triggerCaughtGameOver();
+            }
+        }
+
+        function updateTeacherAI(delta) {
+            if (!teacherGroup) return;
+
+            teacherAI.stateTimer -= delta;
+
+            if (teacherAI.stateTimer <= 0) {
+                switch (teacherAI.state) {
+                    case 'IDLE':
+                        teacherAI.state = Math.random() < 0.6 ? 'PATROLLING' : 'SCANNING';
+                        teacherAI.stateTimer = 3.5 + Math.random() * 4;
+                        if (teacherAI.state === 'PATROLLING') {
+                            const randX = (Math.random() - 0.5) * 8;
+                            const randZ = -8 + Math.random() * 10;
+                            teacherAI.targetPosition.set(randX, 0, randZ);
+                        }
+                        break;
+                    case 'SCANNING':
+                        teacherAI.state = 'IDLE';
+                        teacherAI.stateTimer = 2 + Math.random() * 2.5;
+                        teacherAI.targetPosition.set(0, 0, -8);
+                        break;
+                    case 'PATROLLING':
+                        teacherAI.state = 'IDLE';
+                        teacherAI.stateTimer = 2 + Math.random() * 3;
+                        break;
+                }
+            }
+
+            const dist = teacherGroup.position.distanceTo(teacherAI.targetPosition);
+            if (dist > 0.2) {
+                const dir = new THREE.Vector3().subVectors(teacherAI.targetPosition, teacherGroup.position).normalize();
+                teacherGroup.position.addScaledVector(dir, teacherAI.moveSpeed * delta);
+                teacherAI.rotationY = Math.atan2(dir.x, dir.z);
+                if (Math.random() < 0.06) audio.playFootstep();
+            } else if (teacherAI.state === 'SCANNING') {
+                teacherAI.rotationY = Math.sin(Date.now() * 0.0018) * 1.3;
+            }
+
+            teacherGroup.rotation.y = teacherAI.rotationY;
+
+            const playerPos = camera.position;
+            const teacherForward = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), teacherGroup.rotation.y);
+            const toPlayer = new THREE.Vector3().subVectors(playerPos, teacherGroup.position).normalize();
+
+            const dot = teacherForward.dot(toPlayer);
+            teacherAI.isLookingAtPlayer = dot > 0.62;
+
+            const alertBox = document.getElementById('gaze-alert');
+            const alertText = document.getElementById('gaze-status-text');
+            const alertIcon = document.getElementById('gaze-icon');
+
+            if (teacherAI.isLookingAtPlayer) {
+                alertBox.style.opacity = '1';
+                alertBox.className = 'glass-panel rounded-2xl px-5 py-3 flex items-center gap-3 transition-all duration-300 border border-rose-500/50 bg-rose-500/10';
+                alertText.innerText = 'WATCHING YOU!';
+                alertText.className = 'text-sm font-black text-rose-400 animate-pulse';
+                alertIcon.className = 'text-rose-400 text-2xl';
+            } else {
+                alertBox.style.opacity = '0.3';
+                alertBox.className = 'glass-panel rounded-2xl px-5 py-3 flex items-center gap-3 transition-all duration-300';
+                alertText.innerText = 'NOT LOOKING';
+                alertText.className = 'text-sm font-black text-emerald-400';
+                alertIcon.className = 'text-emerald-400 text-2xl';
+            }
+        }
+
+        function triggerRandomDistraction() {
+            if (!gameState.active || gameState.distractionActive) return;
+
+            gameState.distractionActive = true;
+            gameState.distractionTimer = 6;
+
+            const events = [
+                "Classmate in front row dropped a pencil!",
+                "Classmate raised hand to ask a question!",
+                "Someone dropped a water bottle on the floor!"
+            ];
+
+            const chosenText = events[Math.floor(Math.random() * events.length)];
+            const banner = document.getElementById('distraction-banner');
+            document.getElementById('distraction-text').innerText = chosenText;
+
+            banner.style.opacity = '1';
+            banner.style.transform = 'translateY(0)';
+
+            audio.playClang();
+
+            teacherAI.state = 'CHECKING_STUDENT';
+            teacherAI.stateTimer = 6;
+            teacherAI.targetPosition.set(-4.5, 0, -4);
+        }
+
+        function updateDistractions(delta) {
+            if (!gameState.distractionActive) {
+                if (Math.random() < 0.001) triggerRandomDistraction();
+            } else {
+                gameState.distractionTimer -= delta;
+                if (gameState.distractionTimer <= 0) {
+                    gameState.distractionActive = false;
+                    const banner = document.getElementById('distraction-banner');
+                    banner.style.opacity = '0';
+                    banner.style.transform = 'translateY(-20px)';
+                }
+            }
+        }
+
+        function triggerCaughtGameOver() {
+            gameState.active = false;
+            audio.playAlertChord();
+
+            const quotes = [
+                "NO PHONES IN MY CLASSROOM! Hand over your test paper!",
+                "Did you really think I wouldn't see that glowing screen?!",
+                "F FOR THE EXAM! Principal's office, NOW!"
+            ];
+
+            document.getElementById('results-icon-container').className = 'w-20 h-20 rounded-full mx-auto mb-4 flex items-center justify-center text-4xl shadow-xl bg-rose-500/20 text-rose-500 border border-rose-500/40';
+            document.getElementById('results-icon').className = 'fa-solid fa-hand-cuffed';
+            document.getElementById('results-title').innerText = 'CAUGHT RED HANDED!';
+            document.getElementById('results-subtitle').innerText = 'The teacher caught you using your phone!';
+            document.getElementById('teacher-quote').innerText = `"${quotes[Math.floor(Math.random() * quotes.length)]}"`;
+
+            calculateFinalStats(0);
+            document.getElementById('screen-results').classList.remove('hidden');
+        }
+
+        function submitExamEarly() {
+            if (gameState.examOpen) toggleExamPaper();
+            gameState.active = false;
+
+            let correctCount = 0;
+            EXAM_QUESTIONS.forEach(q => {
+                if (gameState.userAnswers[q.id] === q.answer) correctCount++;
+            });
+
+            const percentage = Math.round((correctCount / EXAM_QUESTIONS.length) * 100);
+
+            let quote = "You turned in your exam. Let's see how well you prepared!";
+            if (percentage >= 90) quote = "Outstanding work! An A+ score. Your concentration was remarkable!";
+            else if (percentage >= 70) quote = "Good effort. You passed the test comfortably.";
+
+            document.getElementById('results-icon-container').className = 'w-20 h-20 rounded-full mx-auto mb-4 flex items-center justify-center text-4xl shadow-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/40';
+            document.getElementById('results-icon').className = 'fa-solid fa-graduation-cap';
+            document.getElementById('results-title').innerText = 'EXAM TURNED IN!';
+            document.getElementById('results-subtitle').innerText = 'You completed and submitted your exam!';
+            document.getElementById('teacher-quote').innerText = `"${quote}"`;
+
+            calculateFinalStats(percentage);
+            document.getElementById('screen-results').classList.remove('hidden');
+        }
+
+        function calculateFinalStats(score) {
+            const answered = Object.keys(gameState.userAnswers).length;
+            const m = Math.floor(gameState.timer / 60).toString().padStart(2, '0');
+            const s = Math.floor(gameState.timer % 60).toString().padStart(2, '0');
+
+            document.getElementById('stat-score').innerText = `${score}%`;
+            document.getElementById('stat-answers').innerText = `${answered} / ${EXAM_QUESTIONS.length}`;
+            document.getElementById('stat-time').innerText = `${m}:${s}`;
+        }
+
+        function updateHUD() {
+            const m = Math.floor(gameState.timer / 60).toString().padStart(2, '0');
+            const s = Math.floor(gameState.timer % 60).toString().padStart(2, '0');
+            document.getElementById('hud-timer').innerText = `${m}:${s}`;
+
+            const answeredCount = Object.keys(gameState.userAnswers).length;
+            document.getElementById('hud-progress').innerText = `${answeredCount} / ${EXAM_QUESTIONS.length}`;
+
+            document.getElementById('phone-battery').innerHTML = `${Math.round(gameState.battery)}% <i class="fa-solid fa-battery-full"></i>`;
+        }
+
+        function startGame() {
+            audio.init();
+
+            gameState.active = true;
+            gameState.paused = false;
+            gameState.suspicion = 0;
+            gameState.phoneOpen = false;
+            gameState.examOpen = false;
+            gameState.userAnswers = {};
+            gameState.distractionActive = false;
+            gameState.distractionTimer = 0;
+            gameState.cameraYaw = 0;
+            gameState.cameraPitch = 0;
+            gameState.battery = 100;
+
+            if (gameState.mode === 'impossible') {
+                gameState.timer = 180;
+                teacherAI.moveSpeed = 3.2;
+                teacherAI.suspicionMult = 1.8;
+                setPlayerSeat('middle');
+            } else if (gameState.mode === 'challenge') {
+                gameState.timer = 240;
+                gameState.battery = 15;
+                teacherAI.moveSpeed = 2.4;
+                teacherAI.suspicionMult = 1.3;
+                setPlayerSeat('front');
+            } else {
+                gameState.timer = 300;
+                teacherAI.moveSpeed = 2.2;
+                teacherAI.suspicionMult = 1.0;
+                setPlayerSeat('middle');
+            }
+
+            gameState.maxTimer = gameState.timer;
+
+            document.getElementById('screen-title').classList.add('hidden');
+            document.getElementById('screen-pause').classList.add('hidden');
+            document.getElementById('screen-results').classList.add('hidden');
+            document.getElementById('phone-wrapper').classList.remove('active');
+            document.getElementById('exam-paper-modal').classList.remove('active');
+            document.getElementById('hud').classList.remove('hidden');
+
+            updateCameraRotation();
+            updateHUD();
+        }
+
+        function togglePauseGame() {
+            if (!gameState.active) return;
+            gameState.paused = !gameState.paused;
+            const pauseScreen = document.getElementById('screen-pause');
+            if (gameState.paused) pauseScreen.classList.remove('hidden');
+            else pauseScreen.classList.add('hidden');
+        }
+
+        function showMainMenu() {
+            gameState.active = false;
+            gameState.paused = false;
+            document.getElementById('screen-pause').classList.add('hidden');
+            document.getElementById('screen-results').classList.add('hidden');
+            document.getElementById('hud').classList.add('hidden');
+            document.getElementById('screen-title').classList.remove('hidden');
+        }
+
+        let lastTime = performance.now();
+
+        function animateLoop(now) {
+            requestAnimationFrame(animateLoop);
+
+            const delta = Math.min((now - lastTime) / 1000, 0.1);
+            lastTime = now;
+
+            if (gameState.active && !gameState.paused) {
+                studentMeshes.forEach((s, idx) => {
+                    const time = now * 0.002 + s.animOffset;
+                    s.head.rotation.y = Math.sin(time) * 0.25;
+                    s.head.rotation.x = Math.cos(time * 0.8) * 0.1;
+
+                    if (gameState.distractionActive && idx === 0) {
+                        s.arm.rotation.z = THREE.MathUtils.lerp(s.arm.rotation.z, -Math.PI / 1.1, delta * 5);
+                    } else {
+                        s.arm.rotation.z = THREE.MathUtils.lerp(s.arm.rotation.z, s.baseArmRot, delta * 5);
+                    }
+                });
+
+                gameState.timer = Math.max(0, gameState.timer - delta);
+                if (gameState.timer <= 0) submitExamEarly();
+
+                if (wallClockHand) {
+                    wallClockHand.rotation.z = -((gameState.maxTimer - gameState.timer) * 0.1);
+                }
+
+                if (Math.floor(now / 1000) !== Math.floor((now - delta * 1000) / 1000)) {
+                    audio.playClockTick();
+                }
+
+                updateTeacherAI(delta);
+                updateSuspicionSystem(delta);
+                updateDistractions(delta);
+                updateHUD();
+            }
+
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+            }
+        }
+
+        window.onload = function() {
+            init3DScene();
+            setupInputListeners();
+            requestAnimationFrame(animateLoop);
+        };
+    </script>
+</body>
+</html>
